@@ -1,0 +1,5 @@
+com\example\demo\DemoApplication.class
+com\example\demo\web\AuthController.class
+com\example\demo\config\SecurityConfig.class
+com\example\demo\config\SecurityConfig$1.class
+com\example\demo\web\HelloController.class
