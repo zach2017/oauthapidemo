@@ -1,447 +1,863 @@
-# Accessing JWT in Spring Boot OAuth2 Resource Server
 
-## Solution 1: Use @AuthenticationPrincipal with Jwt (RECOMMENDED)
+# 🛡️ What Is OAuth2 (Explained Simple)
 
-```java
-@GetMapping("/api/hello")
-public String hello(@AuthenticationPrincipal Jwt jwt) {
-    String username = jwt.getClaimAsString("preferred_username");
-    return "Hello " + username;
-}
-```
+**OAuth2** is a secure way for apps to let users **log in** and **access APIs** *without passing usernames and passwords around.*
 
-**Why this works:**
-- `@AuthenticationPrincipal` extracts the principal from the Authentication object
-- For JWT authentication, the principal is the `Jwt` object itself
-- Direct access to all JWT claims
+It separates the system into **three parts**:
 
-## Solution 2: Use JwtAuthenticationToken without @AuthenticationPrincipal
+1. **Authorization Server**
 
-```java
-@GetMapping("/api/hello")
-public String hello(JwtAuthenticationToken jwtAuth) {
-    Jwt jwt = jwtAuth.getToken();
-    String username = jwt.getClaimAsString("preferred_username");
-    return "Hello " + username;
-}
-```
+   * Example: **Keycloak**, Google Login, Facebook Login
+   * Handles login, passwords, MFA
+   * Issues **tokens** (like a secure badge)
 
-**Why this works:**
-- Spring automatically injects the Authentication object (which is JwtAuthenticationToken)
-- You then extract the Jwt from it
-- Access to both JWT claims and Spring Security authorities
+2. **Client Application** (your app / frontend)
 
-## Solution 3: Use Authentication parameter (Most Flexible)
+   * Example: **React app**
+   * Sends the user to the login page
+   * Receives a token afterward
+   * Uses token to call backend API
 
-```java
-@GetMapping("/api/hello")
-public String hello(Authentication authentication) {
-    if (authentication instanceof JwtAuthenticationToken) {
-        JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
-        Jwt jwt = jwtAuth.getToken();
-        String username = jwt.getClaimAsString("preferred_username");
-        return "Hello " + username;
-    }
-    return "Hello " + authentication.getName();
-}
-```
+3. **Resource Server**
 
-**Why this works:**
-- Most generic approach
-- Works with any authentication type
-- Safe casting with type checking
-
-## Solution 4: Combine Jwt and Authentication (BEST PRACTICE)
-
-```java
-@GetMapping("/api/hello")
-public Map<String, Object> hello(@AuthenticationPrincipal Jwt jwt, Authentication authentication) {
-    Map<String, Object> response = new HashMap<>();
-    
-    // Get user info from JWT
-    response.put("username", jwt.getClaimAsString("preferred_username"));
-    response.put("email", jwt.getClaimAsString("email"));
-    
-    // Get roles/authorities from Authentication
-    response.put("roles", authentication.getAuthorities());
-    
-    return response;
-}
-```
-
-**Why this is best:**
-- Direct access to JWT claims
-- Access to Spring Security authorities
-- Clean and readable code
-
-## Common JWT Claims from Keycloak
-
-### Standard Claims
-```java
-jwt.getSubject()                    // User ID
-jwt.getIssuer()                     // Keycloak URL
-jwt.getIssuedAt()                   // Token issue time
-jwt.getExpiresAt()                  // Token expiration time
-```
-
-### Keycloak-Specific Claims
-```java
-jwt.getClaimAsString("preferred_username")  // Username
-jwt.getClaimAsString("email")               // Email
-jwt.getClaimAsBoolean("email_verified")     // Email verified status
-jwt.getClaimAsString("name")                // Full name
-jwt.getClaimAsString("given_name")          // First name
-jwt.getClaimAsString("family_name")         // Last name
-```
-
-### Role Claims
-```java
-// Realm roles
-Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-List<String> realmRoles = (List<String>) realmAccess.get("roles");
-
-// Client roles
-Map<String, Object> resourceAccess = jwt.getClaimAsMap("resource_access");
-Map<String, Object> clientAccess = (Map<String, Object>) resourceAccess.get("your-client-id");
-List<String> clientRoles = (List<String>) clientAccess.get("roles");
-```
-
-## Complete Example Controller
-
-```java
-@RestController
-@RequestMapping("/api")
-@CrossOrigin(origins = "http://localhost:5173")
-public class HelloController {
-
-    // Simple hello with username
-    @GetMapping("/hello")
-    public String hello(@AuthenticationPrincipal Jwt jwt) {
-        String username = jwt.getClaimAsString("preferred_username");
-        return "Hello " + (username != null ? username : jwt.getSubject());
-    }
-
-    // Detailed user info
-    @GetMapping("/user")
-    public Map<String, Object> getUserInfo(@AuthenticationPrincipal Jwt jwt, 
-                                           Authentication authentication) {
-        Map<String, Object> userInfo = new HashMap<>();
-        
-        // Basic info
-        userInfo.put("username", jwt.getClaimAsString("preferred_username"));
-        userInfo.put("email", jwt.getClaimAsString("email"));
-        userInfo.put("name", jwt.getClaimAsString("name"));
-        
-        // Roles
-        userInfo.put("roles", authentication.getAuthorities().stream()
-            .map(GrantedAuthority::getAuthority)
-            .collect(Collectors.toList()));
-        
-        // Token info
-        userInfo.put("subject", jwt.getSubject());
-        userInfo.put("expiresAt", jwt.getExpiresAt());
-        
-        return userInfo;
-    }
-
-    // Role-based endpoint
-    @GetMapping("/admin")
-    @PreAuthorize("hasRole('ADMIN')")
-    public String adminOnly(@AuthenticationPrincipal Jwt jwt) {
-        return "Hello Admin: " + jwt.getClaimAsString("preferred_username");
-    }
-}
-```
-
-## Important Notes
-
-### ❌ Don't Do This
-```java
-// WRONG - @AuthenticationPrincipal expects Jwt, not JwtAuthenticationToken
-@GetMapping("/hello")
-public String hello(@AuthenticationPrincipal JwtAuthenticationToken jwt) {
-    return "Hello";
-}
-```
-
-### ✅ Do This Instead
-```java
-// CORRECT - Use Jwt with @AuthenticationPrincipal
-@GetMapping("/hello")
-public String hello(@AuthenticationPrincipal Jwt jwt) {
-    return "Hello";
-}
-
-// OR use JwtAuthenticationToken without @AuthenticationPrincipal
-@GetMapping("/hello")
-public String hello(JwtAuthenticationToken jwtAuth) {
-    Jwt jwt = jwtAuth.getToken();
-    return "Hello";
-}
-```
-
-## Null Safety
-
-Always check for null values:
-
-```java
-@GetMapping("/hello")
-public String hello(@AuthenticationPrincipal Jwt jwt) {
-    String username = jwt.getClaimAsString("preferred_username");
-    
-    // Keycloak might not include preferred_username
-    if (username == null) {
-        username = jwt.getSubject(); // Fallback to subject (always present)
-    }
-    
-    return "Hello " + username;
-}
-```
-
-## Type-Safe Claim Access
-
-```java
-// String claim
-String email = jwt.getClaimAsString("email");
-
-// Boolean claim
-Boolean verified = jwt.getClaimAsBoolean("email_verified");
-
-// Instant/Date claim
-Instant issuedAt = jwt.getIssuedAt();
-Instant expiresAt = jwt.getExpiresAt();
-
-// Map claim
-Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-
-// List claim (need to cast)
-List<String> audiences = jwt.getAudience();
-
-// Generic claim (need to cast)
-Object customClaim = jwt.getClaim("custom_claim");
-```
-
-## Testing Your Changes
-
-### 1. Start the Application
-```bash
-mvn spring-boot:run
-```
-
-### 2. Get a Token
-```bash
-TOKEN=$(curl -s -X POST 'http://localhost:8080/realms/myrealm/protocol/openid-connect/token' \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'client_id=react-app' \
-  -d 'username=testuser' \
-  -d 'password=password' \
-  -d 'grant_type=password' | jq -r '.access_token')
-```
-
-### 3. Test the Endpoint
-```bash
-# Test basic hello
-curl -X GET 'http://localhost:8081/api/hello' \
-  -H "Authorization: Bearer $TOKEN"
-
-# Test different methods
-curl -X GET 'http://localhost:8081/api/examples/method1' \
-  -H "Authorization: Bearer $TOKEN"
-
-curl -X GET 'http://localhost:8081/api/examples/method4' \
-  -H "Authorization: Bearer $TOKEN"
-
-# Test JWT claims
-curl -X GET 'http://localhost:8081/api/examples/claims' \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-## Key Takeaways
-
-1. **Use `@AuthenticationPrincipal Jwt`** - Simplest and most direct
-2. **Use `JwtAuthenticationToken` without `@AuthenticationPrincipal`** - When you need authentication details
-3. **Combine both** - When you need both JWT claims and authorities
-4. **Always check for null** - Not all claims are guaranteed to be present
-5. **Use type-safe methods** - `getClaimAsString()`, `getClaimAsBoolean()`, etc.
-
-## Summary Table
-
-| Pattern | Use Case | Example |
-|---------|----------|---------|
-| `@AuthenticationPrincipal Jwt` | Access JWT claims directly | `jwt.getClaimAsString("email")` |
-| `JwtAuthenticationToken` | Need authentication + JWT | `jwtAuth.getToken()` |
-| `Authentication` | Generic, works with any auth | Cast to `JwtAuthenticationToken` |
-| Both Jwt + Authentication | Need claims + authorities | Best of both worlds |
+   * Example: **Spring Boot API**
+   * Holds the protected data
+   * Checks the token
+   * Allows or denies access based on roles/permissions
 
 ---
 
-**Now your JWT access is fixed and follows Spring Security best practices! ✅**
+# 🧠 How OAuth2 Works (Simple Version)
 
-# Keycloak OAuth2 React App
+Here is the **simplest flow** called **Authorization Code Flow** (the one used by browsers + SPAs).
 
-A React + Vite application with Keycloak OAuth2/OIDC authentication, featuring session timeout after 5 minutes of inactivity.
+### 1. User tries to access your app
 
-## Features
+### 2. Your app redirects them to the login server (Keycloak)
 
-- ✅ OAuth2/OIDC authentication with Keycloak
-- ✅ Protected routes requiring authentication
-- ✅ Automatic session expiration after 5 minutes of inactivity
-- ✅ Display user roles from Keycloak
-- ✅ Modern, responsive UI
+### 3. User logs in
 
-## Prerequisites
+### 4. Keycloak redirects back with an "authorization code"
 
-Before running this application, you need to have:
+### 5. Your app exchanges the code for a **token**
 
-1. **Node.js** (v16 or higher)
-2. **Keycloak Server** running and configured
+### 6. Your app calls the API using the **token**
 
-## Keycloak Setup
+### 7. API checks the token and returns data
 
-### 1. Install and Start Keycloak
+---
 
-Download Keycloak from [https://www.keycloak.org/downloads](https://www.keycloak.org/downloads) or run with Docker:
+# 🔐 ASCII Diagram — OAuth2 Flow
 
-```bash
-docker run -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:latest start-dev
+```
++----------------+         +-----------------+         +------------------+
+|                |         |                 |         |                  |
+|   User /       |  (1)    |   Client App    | (6)     |  Resource Server |
+|  Browser App   +-------->+  (React, etc)   +-------->+ (Spring Boot API)|
+|                |         |                 |         |                  |
++-------+--------+         +--------+--------+         +---------+--------+
+        ^                           |                            ^
+        |                           |                            |
+        | (4) authorization code    | (7) API Response           |
+        |                           |                            |
++-------+--------+         +--------v--------+                   
+|                | (3)     |                 | (5)               
+| Authorization  +-------->+   Keycloak      +-------------------+
+|    Server      |         | (Login Server)  |   Tokens (JWT)    
+|                |         |                 |                   
++----------------+         +-----------------+               
 ```
 
-### 2. Configure Keycloak
+---
 
-1. Access Keycloak admin console: `http://localhost:8080`
-2. Login with admin credentials (admin/admin if using Docker command above)
-3. Create a new realm (e.g., "myrealm") or use an existing one
-4. Create a new client:
-   - Client ID: `react-app` (or your preferred name)
-   - Client Protocol: `openid-connect`
-   - Access Type: `public`
-   - Valid Redirect URIs: `http://localhost:5173/*`
-   - Web Origins: `http://localhost:5173`
-5. Create users and assign roles as needed
+# 🌈 Markdown Mermaid Diagram (Pretty Version)
 
-### 3. Update Application Configuration
+You can paste this directly into GitHub or Markdown tools:
 
-Edit `src/keycloak.js` with your Keycloak settings:
+```mermaid
+sequenceDiagram
+    participant U as User (Browser)
+    participant C as Client App (React)
+    participant A as Auth Server (Keycloak)
+    participant R as Resource Server (Spring API)
 
-```javascript
-const keycloak = new Keycloak({
-  url: 'http://localhost:8080',  // Your Keycloak server URL
-  realm: 'myrealm',               // Your realm name
-  clientId: 'react-app',          // Your client ID
-});
+    U->>C: Open App (/secure)
+    C->>A: Redirect to Login
+    A->>U: Show Login Page
+    U->>A: Enter username/password
+    A->>C: Redirect with Authorization Code
+    C->>A: Exchange Code for Token
+    A->>C: Return Access Token (JWT)
+    C->>R: Call API with "Authorization: Bearer <token>"
+    R->>C: Protected Response
+    C->>U: Show Secured Page
 ```
 
-## Installation
+---
 
-```bash
-# Install dependencies
+# 🔑 Key OAuth2 Concepts (Simple Bullet Points)
+
+### ✔️ **Access Token (JWT)**
+
+* Like a **digital ID badge**
+* Contains:
+
+  * Username
+  * Roles
+  * Expiration time
+* Sent to API in the header:
+
+  ```
+  Authorization: Bearer <token>
+  ```
+
+### ✔️ **Authorization Server**
+
+* Handles login/password
+* Issues access tokens
+* Example: **Keycloak**
+
+### ✔️ **Client**
+
+* The app the user interacts with (React)
+* Never stores passwords
+* Only handles tokens
+
+### ✔️ **Resource Server**
+
+* API that returns protected data
+* Validates JWT tokens
+* Checks user roles with expressions like:
+
+  ```
+  @PreAuthorize("hasRole('ADMIN')")
+  ```
+
+### ✔️ **Scopes**
+
+* Fine-grained permissions like:
+
+  * `read`
+  * `write`
+  * `openid`
+* Used mainly when third-party apps request permissions
+
+### ✔️ **Redirect URI**
+
+* Where Keycloak sends the user after login
+* Must match exactly (including port)
+
+### ✔️ **Authorization Code**
+
+* A temporary code returned after login
+* The client uses it to get the token
+
+---
+
+# 🔒 Why OAuth2 Is Safer Than Passing Passwords
+
+* Passwords are **never sent to the app**
+* Only Keycloak handles login
+* The app only sees **tokens**
+* Tokens expire → safer if stolen
+* Roles are included inside the token → API doesn't need a database lookup
+
+---
+Below is a **complete, professional, copy-paste-ready `README.md`** for your project.
+
+It explains **OAuth2**, **Keycloak**, **React client**, **Spring Boot resource server**, includes **ASCII diagrams**, a **Mermaid diagram**, and clear **step-by-step setup instructions** for running the ZIP you uploaded.
+
+If you want, I can **insert your project’s exact file names**, or **tailor it to GitHub**, or **add screenshots**.
+
+---
+
+# README.md
+
+# 🔐 OAuth2 + Keycloak + Spring Boot + React
+
+### Simple Beginner-Friendly Example
+
+This project demonstrates a **complete end-to-end OAuth2 setup** using:
+
+* **Keycloak** → Authorization Server (login + JWT tokens)
+* **Spring Boot API** → Resource Server (secured endpoints)
+* **React SPA** → OAuth2 Client (login + call API)
+
+The goal is to show **exactly how OAuth2 works** using the simplest possible architecture.
+
+---
+
+# 📦 Project Contents
+
+This project contains three main pieces:
+
+```
+/keycloak      → (Configured externally)
+/spring-api    → Spring Boot 3.5.x Resource Server (JWT)
+/react-app     → React + keycloak-js client (Vite)
+```
+
+The ZIP includes:
+
+* Java Spring API with:
+
+  * SecurityConfig
+  * HelloController (role-protected endpoints)
+  * AuthController (force login)
+  * CORS configuration
+
+* React App with:
+
+  * AuthContext
+  * ProtectedRoute
+  * keycloak.js
+  * SecurePage
+  * API service with Bearer token
+  * Inactivity timer
+
+---
+
+# 🌈 Overview — What You Are Building
+
+OAuth2 works by **separating login from your app**, so your app never handles passwords.
+
+* 🔐 **Keycloak** handles login
+* 🎨 **React App** requests tokens
+* 🧠 **Spring Boot** checks tokens and roles
+* 🔒 Roles decide access to certain endpoints
+
+---
+
+# 🛡️ OAuth2 Explained (Super Simple)
+
+OAuth2 is like using a **security badge** to access different rooms:
+
+* Keycloak gives you the badge (token)
+* React app carries the badge
+* Spring Boot API checks the badge before letting you in
+
+---
+
+# 🧱 OAuth2 Roles in This Example
+
+Keycloak realm roles you need to create:
+
+* `USER`
+* `ADMIN`
+* `UPLOAD`
+
+They map to Spring as:
+
+```
+ROLE_USER
+ROLE_ADMIN
+ROLE_UPLOAD
+```
+
+Spring endpoints:
+
+| Endpoint           | Required Role |
+| ------------------ | ------------- |
+| `/api/hello`       | USER          |
+| `/api/hello/admin` | ADMIN         |
+| `/api/hello/user`  | UPLOAD        |
+
+---
+
+# 🧭 OAuth2 Authorization Code Flow (Step-by-Step)
+
+1. User opens React app
+2. React redirects to Keycloak login
+3. User logs in
+4. Keycloak redirects back with an authorization **code**
+5. React + keycloak-js exchange that code for a **token (JWT)**
+6. React calls Spring API with
+
+   ```
+   Authorization: Bearer <token>
+   ```
+7. Spring validates token + roles
+8. Data is returned to the React app
+
+---
+
+# 🖼️ ASCII Diagram — OAuth2 Flow
+
+```
++----------------+         +-----------------+         +------------------+
+|                |         |                 |         |                  |
+|   User /       |  (1)    |   Client App    | (6)     |  Resource Server |
+|  Browser App   +-------->+  (React SPA)    +-------->+ (Spring Boot API)|
+|                |         |                 |         |                  |
++-------+--------+         +--------+--------+         +---------+--------+
+        ^                           |                            ^
+        |                           |                            |
+        | (4) authorization code    | (7) API Response           |
+        |                           |                            |
++-------+--------+         +--------v--------+                   
+|                | (3)     |                 | (5)               
+| Authorization  +-------->+   Keycloak      +-------------------+
+|    Server      |         | (Login Server)  |   Tokens (JWT)    
+|                |         |                 |                   
++----------------+         +-----------------+               
+```
+
+---
+
+# 🎨 Mermaid Diagram Version (Beautiful Markdown)
+
+```mermaid
+sequenceDiagram
+    participant U as User (Browser)
+    participant C as Client App (React)
+    participant A as Auth Server (Keycloak)
+    participant R as Resource Server (Spring API)
+
+    U->>C: Open App (/secure)
+    C->>A: Redirect to Login
+    A->>U: Show Login Page
+    U->>A: Submit credentials
+    A->>C: Redirect with Authorization Code
+    C->>A: Exchange Code for Token (OAuth Token Endpoint)
+    A->>C: Return Access Token (JWT)
+    C->>R: Call API with Bearer Token
+    R->>C: Protected JSON Response
+    C->>U: Display Secure Page
+```
+
+---
+
+# ⚙️ Key Concepts (Bullet-Point Cheatsheet)
+
+## 🔑 Access Token (JWT)
+
+* Secure token with:
+
+  * username
+  * roles
+  * expiration
+* Sent to API:
+
+  ```
+  Authorization: Bearer <token>
+  ```
+
+## 🚪 Roles (Permissions)
+
+* Assigned in Keycloak
+* Example: USER / ADMIN / UPLOAD
+* Checked in Spring Boot via:
+
+  ```
+  @PreAuthorize("hasRole('ADMIN')")
+  ```
+
+## 🔒 Resource Server (Spring Boot)
+
+* Validates JWT signature
+* Validates issuer (`demo-realm`)
+* Maps roles from the token
+
+## 🧠 Client (React)
+
+* Uses `keycloak-js`
+* Handles login redirects
+* Stores token in memory (secure)
+* Calls API using the token
+
+## 🌍 CORS
+
+Needed because:
+
+* React = `http://localhost:5173`
+* API = `http://localhost:8080`
+
+Configured in Spring:
+
+```
+.allowedOrigins("http://localhost:5173")
+.allowCredentials(true)
+```
+
+---
+
+# 🚀 Setup Guide (Step-by-Step)
+
+This section explains how to **run the whole project**, starting with Keycloak.
+
+---
+
+## 1️⃣ Start Keycloak (Login Server)
+
+### Create Realm
+
+* Name: **demo-realm**
+
+### Create Roles
+
+* `USER`
+* `ADMIN`
+* `UPLOAD`
+
+### Create Test User
+
+* username: `testuser`
+* password: `password`
+* assign roles (`USER` at minimum)
+
+### Create Client
+
+* Client ID: **demo-client**
+* Valid redirect URIs:
+
+  ```
+  http://localhost:5173/*
+  ```
+* Web Origins:
+
+  ```
+  http://localhost:5173
+  ```
+* Enable **Standard Flow**
+
+---
+
+## 2️⃣ Start Spring Boot API
+
+Requirements:
+
+* Java 21
+* Maven
+
+Run:
+
+```
+cd spring-api
+mvn spring-boot:run
+```
+
+API will run on:
+
+```
+http://localhost:8080
+```
+
+Endpoints:
+
+* `/api/hello`
+* `/api/hello/admin`
+* `/api/hello/user`
+
+Each requires different roles.
+
+---
+
+## 3️⃣ Start React App
+
+Requirements:
+
+* Node 18+
+* Vite
+
+Run:
+
+```
+cd react-app
 npm install
-```
-
-## Running the Application
-
-```bash
-# Start development server
 npm run dev
 ```
 
-The application will be available at `http://localhost:5173`
-
-## How It Works
-
-### Authentication Flow
-
-1. User visits the app and is redirected to `/login`
-2. Clicking "Login with Keycloak" redirects to Keycloak login page
-3. After successful authentication, user is redirected to `/secure` page
-4. The secure page displays:
-   - Personalized greeting
-   - User information (email, name)
-   - Assigned roles from Keycloak
-   - Session timeout warning
-
-### Session Timeout
-
-- The app monitors user activity (mouse, keyboard, scroll, touch events)
-- After 5 minutes of inactivity, the session automatically expires
-- User is logged out and shown an alert
-- Activity timer resets with each user interaction
-
-### User Roles
-
-The app displays both:
-- **Realm roles**: Roles assigned at the realm level
-- **Client roles**: Roles assigned specifically to this client
-
-## Project Structure
+App runs at:
 
 ```
-src/
-├── App.jsx                 # Main app component with routing
-├── App.css                 # Global styles
-├── AuthContext.jsx         # Authentication context and session management
-├── keycloak.js            # Keycloak configuration
-├── Login.jsx              # Login page component
-├── Login.css              # Login page styles
-├── SecurePage.jsx         # Protected page component
-├── SecurePage.css         # Secure page styles
-└── ProtectedRoute.jsx     # Route guard component
+http://localhost:5173
 ```
 
-## Customization
+Navigate to `/login`.
 
-### Change Session Timeout
+---
 
-Edit `INACTIVITY_TIMEOUT` in `src/AuthContext.jsx`:
+# 🔥 Testing the Whole System
 
-```javascript
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
+1. Open browser → `http://localhost:5173/secure`
+2. You will be redirected to Keycloak
+3. Login using your test user
+4. React loads user info & roles
+5. Click buttons to call secured endpoints
+6. Spring responds based on your roles
+
+---
+
+# 🧪 Example API Calls
+
+### Check “Hello” (requires role USER)
+
+```
+GET /api/hello
+Authorization: Bearer <jwt>
 ```
 
-### Modify Authentication Behavior
+### Check “Admin” (requires role ADMIN)
 
-Update the Keycloak initialization options in `src/AuthContext.jsx`:
-
-```javascript
-const auth = await keycloak.init({
-  onLoad: 'check-sso',        // or 'login-required'
-  checkLoginIframe: false,
-  pkceMethod: 'S256'
-});
+```
+GET /api/hello/admin
+Authorization: Bearer <jwt>
 ```
 
-## Build for Production
+---
 
-```bash
-npm run build
+# 🔧 File Structure Example
+
+```
+spring-api/
+  ├─ src/main/java/com/example/security/SecurityConfig.java
+  ├─ src/main/java/com/example/controller/HelloController.java
+  ├─ src/main/java/com/example/controller/AuthController.java
+  ├─ src/main/resources/application.properties
+
+react-app/
+  ├─ src/AuthContext.jsx
+  ├─ src/ProtectedRoute.jsx
+  ├─ src/keycloak.js
+  ├─ src/SecurePage.jsx
+  ├─ src/apiService.js
+  ├─ src/InactivityTimer.jsx
 ```
 
-The built files will be in the `dist/` directory.
+---
 
-## Technologies Used
+# 📘 Why Use OAuth2 (Instead of Sessions)
 
-- **React 18** - UI library
-- **Vite** - Build tool and dev server
-- **Keycloak JS** - Keycloak JavaScript adapter
-- **React Router** - Client-side routing
+* No passwords sent through your apps
+* Token is trusted and signed
+* APIs don’t need to store sessions
+* Roles included in token
+* Works across multiple services
 
-## Troubleshooting
+---
 
-### CORS Issues
+# 🎉 Conclusion
 
-Make sure your Keycloak client has the correct Web Origins configured (`http://localhost:5173` for development).
+You now have a **complete OAuth2 ecosystem**:
 
-### Session Not Expiring
+| Component           | Purpose                        |
+| ------------------- | ------------------------------ |
+| **Keycloak**        | Authenticates + issues tokens  |
+| **React Client**    | Logs in user + stores token    |
+| **Spring Boot API** | Validates JWT + enforces roles |
 
-Check browser console for errors. Ensure the inactivity timer is properly initialized after authentication.
+This project is a solid foundation for:
 
-### Roles Not Showing
+* Microservices
+* Role-based access
+* Enterprise authentication
+* Secure APIs
+* Single Sign-On (SSO)
 
-Verify that:
-1. Roles are assigned to the user in Keycloak
-2. The client has role mappings configured
-3. The token includes the roles (check token in browser dev tools)
+Below is a **clear, simple explanation** of:
 
-## License
+* **Man-in-the-Middle (MITM) attacks**
+* **Session expiration**
+* **Token refresh**
+* **How OAuth2 + Keycloak + HTTPS protects you**
+* **What you must configure to stay safe**
 
-MIT
+This version is beginner-friendly **and** technically correct — perfect for a README or training document.
+
+---
+
+# 🔐 1. Man-in-the-Middle (MITM) Attacks
+
+## ❌ What is a MITM attack?
+
+A **Man-in-the-Middle attack** happens when a hacker secretly intercepts communication between:
+
+* The browser (React app)
+* The Authorization Server (Keycloak)
+* The Resource Server (Spring API)
+
+The attacker tries to:
+
+1. **Steal tokens**
+2. **Modify requests**
+3. **Pretend to be the user**
+
+Example:
+
+```
+User → (attacker intercepts) → Keycloak
+```
+
+If the attacker can steal your JavaScript-accessible token, they can use it until it expires.
+
+---
+
+## ✔️ How OAuth2 prevents MITM
+
+OAuth2 *by itself* does **not** stop MITM —
+**HTTPS does**.
+
+### 🔐 HTTPS (TLS/SSL) stops MITM
+
+When you use:
+
+```
+https://my-api.com
+https://my-login.com
+```
+
+Traffic is encrypted end-to-end.
+
+Without HTTPS:
+
+* Tokens can be stolen
+* Passwords can be intercepted
+* Redirect URL can be altered
+
+### ✔ Keycloak + Spring Boot REQUIRE HTTPS in production
+
+**Never deploy OAuth2 on plain HTTP.**
+
+Configure:
+
+* In React:
+
+  ```js
+  url: "https://auth.mycompany.com"
+  ```
+
+* In Keycloak:
+  Settings → Realm → “Require HTTPS”
+
+* In Spring Boot (`application.yml`):
+
+  ```yaml
+  server:
+    ssl:
+      enabled: true
+  ```
+
+---
+
+## ✔ Additional MITM Protections
+
+### 1. **PKCE (Proof Key for Code Exchange)**
+
+You already enabled:
+
+```js
+pkceMethod: "S256"
+```
+
+PKCE prevents attackers from stealing authorization codes.
+
+### 2. **Secure Cookies (if used)**
+
+Set:
+
+* `Secure`
+* `SameSite=strict`
+* `HttpOnly` (for non-SPA clients)
+
+### 3. **CORS**
+
+Prevents malicious websites from using your tokens:
+
+```
+allowedOrigins("https://my-frontend.com")
+```
+
+---
+
+# ⏰ 2. Session Expiration
+
+## ❌ What is session expiration?
+
+A session expiration ensures:
+
+* Users are logged out after inactivity
+* Stolen tokens become useless
+* MITM attackers can’t reuse old sessions
+
+OAuth2 has 3 relevant expirations:
+
+| Concept                      | Who controls it | Purpose                                   |
+| ---------------------------- | --------------- | ----------------------------------------- |
+| **Access Token Expiration**  | Keycloak        | Protect API access                        |
+| **Refresh Token Expiration** | Keycloak        | Limit lifetime of auto-login              |
+| **SSO Session Expiration**   | Keycloak        | Control how long the user stays logged in |
+
+---
+
+## ✔ How Your Example Handles Session Expiration
+
+Your React example uses an **inactivity timer**:
+
+```js
+timeoutRef.current = setTimeout(() => {
+  logout();
+  alert("Session expired due to inactivity");
+}, 5 * 60 * 1000);
+```
+
+This layer protects **client-side inactivity**.
+
+But Keycloak also controls expiration:
+
+### 🔑 Access Token lifetime
+
+Default: **5 minutes**
+
+After that, the API rejects requests:
+
+```
+401 Unauthorized – token expired
+```
+
+### 🔁 Refresh Token lifetime
+
+Default: **30 minutes**
+
+User stays logged in without re-entering password.
+
+### 🧹 SSO session
+
+Default: **10 hours**
+
+User can stay logged in across browser tabs.
+
+---
+
+# 🔄 3. Token Refresh
+
+## ✔ What is Token Refresh?
+
+Your React SPA uses a **short-life access token** (JWT).
+
+When it expires, the app uses the **refresh token** to get a new one.
+
+Your code:
+
+```js
+await keycloak.updateToken(30)
+```
+
+Meaning:
+
+> “If the token will expire in the next 30 seconds, refresh it now.”
+
+If refresh succeeds → new access token returned
+If refresh fails → login required
+
+---
+
+# 🔧 What Can Go Wrong With Token Refresh?
+
+### ❌ 1. Attacker steals refresh token
+
+If you store a refresh token in:
+
+* LocalStorage
+* SessionStorage
+* IndexedDB
+
+…an XSS attack can steal it.
+
+**This is why refresh tokens in SPAs are dangerous.**
+
+### ❌ 2. Infinite refresh (“zombie sessions”)
+
+If refresh token expiration is too long:
+
+* Users never log out
+* Stolen tokens remain valid for hours or days
+
+### ❌ 3. Using insecure HTTP
+
+Refresh token can be intercepted ➜ attacker uses it to mint new tokens.
+
+---
+
+# ✔ How to Secure Token Refresh
+
+### 1. Use HTTPS everywhere
+
+This is **non-negotiable**.
+
+### 2. Keep tokens in memory only
+
+`keycloak-js` does this automatically.
+
+Nothing is written to:
+
+* LocalStorage
+* SessionStorage
+* Cookies
+
+### 3. Set short access token lifetime
+
+Recommended:
+
+```
+Access Token Lifetime: 5 minutes
+```
+
+### 4. Set short refresh token lifetime
+
+Recommended:
+
+```
+Refresh Token Max: 30 minutes
+No Reuse: Enabled
+```
+
+### 5. Use PKCE (enabled in your SPA)
+
+Prevents stolen authorization codes from being reused.
+
+---
+
+# 🛡 How OAuth2 + Keycloak + Spring Protect You
+
+| Attack                     | How It’s Stopped             |
+| -------------------------- | ---------------------------- |
+| MITM                       | HTTPS + PKCE                 |
+| Stolen token               | Short token expiration       |
+| Replay attack              | Nonce + signed JWT           |
+| Attacker refreshes forever | Short refresh lifetime       |
+| Cross-site token use       | CORS + SameSite cookies      |
+| XSS stealing token         | Tokens stored only in memory |
+
+---
+
+# 📦 Summary Table
+
+| Security Feature  | React SPA        | Keycloak     | Spring API   |
+| ----------------- | ---------------- | ------------ | ------------ |
+| HTTPS             | Required         | Required     | Required     |
+| PKCE              | Enabled          | Supported    | N/A          |
+| Access Token Exp  | Reads            | Configurable | Enforced     |
+| Refresh Token Exp | Reads            | Configurable | N/A          |
+| Session Timeout   | Inactivity timer | SSO settings | N/A          |
+| Token Storage     | Memory only      | Secure JWT   | Header-based |
+
+---
+
+# ✔ Final Summary (Simple Version)
+
+### **Man in the Middle**
+
+* Attack: Someone intercepts your traffic
+* Fix: **Always use HTTPS + PKCE**
+
+### **Session Expiration**
+
+* Purpose: Kick users out if inactive to protect stolen sessions
+* Fix: Keycloak SSO session limits + React inactivity timer
+
+### **Token Refresh**
+
+* Purpose: Keep user logged in without entering password
+* Danger: If refresh token is stolen
+* Fix: Short refresh token lifetime + HTTPS + memory storage
+
