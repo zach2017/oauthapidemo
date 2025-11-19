@@ -33,7 +33,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const initHasRun = useRef(false);
+
   useEffect(() => {
+
+    if (initHasRun.current) {
+            return; // Initialization has already run, exit the effect
+        }
+        
+        // Set the flag *before* starting the async operation
+        initHasRun.current = true;
+
     const initKeycloak = async () => {
       try {
         const auth = await keycloak.init({
