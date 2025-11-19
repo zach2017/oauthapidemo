@@ -26,16 +26,16 @@ public class HelloController {
         if (username == null ) {
            username = jwt.getSubject();
         }
-        return "{ data: 'Hello " + username + "' } ";
+        return "{ data: 'ADMIN Called " + username + "' } ";
     }
 
     @GetMapping("/api/hello/user")
-    @PreAuthorize("hasRole('INFO')")
+    @PreAuthorize("hasRole('UPLOAD')")
     public String user(@AuthenticationPrincipal Jwt jwt){
         String username = jwt.getClaimAsString("preferred_username");
         if (username == null ) {
            username = jwt.getSubject();
         }
-        return "{ data: 'User " + username + "' } ";
+        return "{ data: 'User INFO " + username + "' } ";
     }
 }

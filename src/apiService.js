@@ -48,7 +48,9 @@ const callApi = async (endpoint, options = {}) => {
       throw new Error(`API call failed with status ${response.status}`);
     }
 
-    return await response.data;
+    const data = await response.text();
+    console.log(data)
+    return data;
   } catch (error) {
     console.error('API call error:', error);
     throw error;
