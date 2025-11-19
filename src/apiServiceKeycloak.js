@@ -1,4 +1,4 @@
-import { getAccessToken, login } from './oidcClient';
+import keycloak from './keycloak';
 
 const API_BASE_URL = 'http://localhost:8080/api';
 
@@ -6,23 +6,19 @@ const API_BASE_URL = 'http://localhost:8080/api';
  * Generic API call function with automatic token handling
  */
 const callApi = async (endpoint, options = {}) => {
-  
-  // 1. Get the access token. getAccessToken handles token renewal automatically.
-  const token = await getAccessToken();
-  
-  if (!token) {
-    // If no token is available, redirect to login
-    console.warn('No active token found, redirecting to login...');
-    login();
-    // Throw an error or return to prevent the API call from proceeding without a token
-    throw new Error('Authentication required.');
+  // Ensure token is fresh
+  try {
+    await keycloak.updateToken(30); // Refresh if expires in 30 seconds
+  } catch (error) {
+    console.error('Failed to refresh token:', error);
+    keycloak.login();
+    return;
   }
 
   const defaultOptions = {
     headers: {
       'Content-Type': 'application/json',
-      // 2. Use the token for Authorization header
-      'Authorization': `Bearer ${token}`
+      'Authorization': `Bearer ${keycloak.token}`
     }
   };
 
@@ -38,11 +34,9 @@ const callApi = async (endpoint, options = {}) => {
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, mergedOptions);
     
-    // 3. Handle Unauthorized (401)
     if (response.status === 401) {
-      // Token expired, invalid, or server rejected it. Redirect to login.
-      console.error('Unauthorized API call (401). Forcing re-login.');
-      login();
+      // Token expired or invalid, redirect to login
+      keycloak.login();
       return;
     }
 
