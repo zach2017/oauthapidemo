@@ -1,4 +1,5 @@
-C:\Users\solarisone\zactonicsapps\learntogether2026\Java\spring-keycloak-demo\src\main\java\com\example\demo\config\SecurityConfig.java
-C:\Users\solarisone\zactonicsapps\learntogether2026\Java\spring-keycloak-demo\src\main\java\com\example\demo\DemoApplication.java
-C:\Users\solarisone\zactonicsapps\learntogether2026\Java\spring-keycloak-demo\src\main\java\com\example\demo\web\AuthController.java
-C:\Users\solarisone\zactonicsapps\learntogether2026\Java\spring-keycloak-demo\src\main\java\com\example\demo\web\HelloController.java
+C:\Users\solarisone\oauthapidemo\backend\src\main\java\com\example\demo\config\CorsConfig.java
+C:\Users\solarisone\oauthapidemo\backend\src\main\java\com\example\demo\config\SecurityConfig.java
+C:\Users\solarisone\oauthapidemo\backend\src\main\java\com\example\demo\DemoApplication.java
+C:\Users\solarisone\oauthapidemo\backend\src\main\java\com\example\demo\web\AuthController.java
+C:\Users\solarisone\oauthapidemo\backend\src\main\java\com\example\demo\web\HelloController.java

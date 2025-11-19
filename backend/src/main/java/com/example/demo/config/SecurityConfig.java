@@ -19,6 +19,9 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.StringUtils;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.*;
 
@@ -30,11 +33,37 @@ public class SecurityConfig {
     private static final String ACCESS_TOKEN_COOKIE_NAME = "JSESSIONID";
 
     @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        
+        // **1. Define allowed origins** - Replace with your actual frontend URLs
+        configuration.addAllowedOrigin("http://localhost:3000"); 
+        configuration.addAllowedOrigin("http://localhost:5173");
+        
+        // **2. Define allowed methods**
+        configuration.addAllowedMethod("*"); // Allow all methods (GET, POST, PUT, DELETE, etc.)
+        
+        // **3. Define allowed headers**
+        configuration.addAllowedHeader("*"); // Allow all headers
+        
+        // **4. Allow credentials** - Important for cookies and JWT in headers (if applicable)
+        configuration.setAllowCredentials(true); 
+        
+        // **5. Define how long the pre-flight request can be cached (in seconds)**
+        // configuration.setMaxAge(3600L); // Optional
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        // Apply this CORS configuration to all paths
+        source.registerCorsConfiguration("/**", configuration); 
+        return source;
+    }
+    
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         log.info("Configuring HTTP security (resource server + cookie-based JWT)");
 
         http
-            .csrf(AbstractHttpConfigurer::disable)
+            .csrf(AbstractHttpConfigurer::disable)  .cors(cors -> cors.configurationSource(corsConfigurationSource())) 
             // Let Spring create a session for request cache, but auth itself is still via JWT
             .sessionManagement(sm ->
                 sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
